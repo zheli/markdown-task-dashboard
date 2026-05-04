@@ -1,8 +1,10 @@
 # GitHub Markdown Task Dashboard
 
 Local dashboard for checking markdown task status across GitHub repositories.
-It reads `docs/PROJECT.md` from each configured repository and branch, then
-shows task totals and per-repository status in a browser.
+It reads `docs/PROJECT.md` or `docs/projects.md` from each configured repository
+and branch, then shows task totals and per-repository status in a browser.
+Use the status filter buttons to narrow the task table. Click a task title to
+open its markdown detail file on GitHub.
 
 ## Configuration
 
@@ -59,6 +61,12 @@ Override ports:
 
 ```bash
 FRONTEND_PORT=9090 BACKEND_PORT=9000 docker compose up --build
+```
+
+Run the embedded demo data without a real token:
+
+```bash
+MOCK_DATA=true GITHUB_TOKEN=dummy docker compose up --build
 ```
 
 ## API

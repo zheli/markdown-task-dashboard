@@ -1,0 +1,19 @@
+[project]
+name = "github-markdown-task-dashboard"
+version = "0.1.0"
+description = "Local dashboard for markdown task tracking across GitHub repositories."
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

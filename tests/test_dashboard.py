@@ -110,7 +110,33 @@ def test_fetch_project_markdown_decodes_github_content(monkeypatch):
 
     monkeypatch.setattr(dashboard.urllib.request, "urlopen", lambda request, timeout: Response())
 
-    assert dashboard.fetch_project_markdown("owner/repo", "main", "token") == "# Project"
+    assert dashboard.fetch_project_markdown("owner/repo", "main", "token") == ("# Project", "docs/PROJECT.md")
+
+
+def test_fetch_project_markdown_falls_back_to_lowercase_projects(monkeypatch):
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            content = base64.b64encode(b"# Lowercase").decode("utf-8")
+            return json.dumps({"type": "file", "content": content}).encode("utf-8")
+
+    def urlopen(request, timeout):
+        calls.append(request.full_url)
+        if "docs/PROJECT.md" in request.full_url:
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+        return Response()
+
+    monkeypatch.setattr(dashboard.urllib.request, "urlopen", urlopen)
+
+    assert dashboard.fetch_project_markdown("owner/repo", "main", "token") == ("# Lowercase", "docs/projects.md")
+    assert len(calls) == 2
 
 
 def test_fetch_project_markdown_returns_clear_not_found_error(monkeypatch):
@@ -133,3 +159,21 @@ def test_build_status_keeps_repo_level_errors():
 
     assert payload["repositories"][0]["status"] == "error"
     assert payload["repositories"][0]["error"] == "GITHUB_TOKEN is required."
+
+
+def test_mock_data_builds_demo_dashboard_without_token():
+    config = dashboard.AppConfig(
+        default_branch="main",
+        repositories=[dashboard.RepositoryConfig(name="zheli/canton-infra", branch="main")],
+    )
+
+    payload = dashboard.build_status(config, token=None, use_mock_data=True)
+
+    assert payload["summary"]["tasks"] == 18
+    assert payload["summary"]["complete"] == 9
+    assert payload["summary"]["in_progress"] == 6
+    assert payload["summary"]["not_started"] == 3
+    assert payload["repositories"][0]["source"] == "docs/projects.md"
+    assert payload["repositories"][0]["tasks"][0]["url"].endswith(
+        "/blob/main/docs/tasks/001-EPIC-devnet-validator-deployment.md"
+    )

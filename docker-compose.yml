@@ -5,6 +5,7 @@ services:
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       CONFIG_PATH: ${CONFIG_PATH:-config.yaml}
       GITHUB_TOKEN: ${GITHUB_TOKEN:?GITHUB_TOKEN is required}
+      MOCK_DATA: ${MOCK_DATA:-false}
     ports:
       - "${FRONTEND_PORT:-8080}:${BACKEND_PORT:-8000}"
     volumes:

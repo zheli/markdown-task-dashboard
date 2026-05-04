@@ -450,6 +450,28 @@ INDEX_HTML = """<!doctype html>
     .counts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; font-size: 12px; background: #fbfcfd; }
     .error { color: var(--danger); margin-top: 10px; font-size: 13px; }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin: 0 0 12px;
+      flex-wrap: wrap;
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 7px 10px;
+      min-width: auto;
+    }
+    .filter[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: #e7f3f0;
+      color: var(--accent);
+    }
     .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 800px; }
     th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
@@ -478,6 +500,10 @@ INDEX_HTML = """<!doctype html>
   <main>
     <section class="summary" id="summary"></section>
     <section class="repos" id="repos"></section>
+    <section class="toolbar" aria-label="Task filters">
+      <div class="filters" id="filters"></div>
+      <div class="meta" id="visible-count"></div>
+    </section>
     <section class="table-wrap">
       <table>
         <thead>
@@ -500,6 +526,10 @@ INDEX_HTML = """<!doctype html>
     const tasksEl = document.querySelector("#tasks");
     const metaEl = document.querySelector("#meta");
     const refreshButton = document.querySelector("#refresh");
+    const filtersEl = document.querySelector("#filters");
+    const visibleCountEl = document.querySelector("#visible-count");
+    let dashboardData = null;
+    let activeStatus = "all";
 
     const labels = {
       repositories: "Repositories",
@@ -529,6 +559,15 @@ INDEX_HTML = """<!doctype html>
       `).join("");
     }
 
+    function renderFilters() {
+      const filterLabels = { all: "All", ...labels };
+      filtersEl.innerHTML = ["all", "not_started", "in_progress", "complete", "unknown"].map((key) => `
+        <button class="filter" type="button" data-status="${key}" aria-pressed="${activeStatus === key}">
+          ${filterLabels[key]}
+        </button>
+      `).join("");
+    }
+
     function renderRepos(repositories) {
       reposEl.innerHTML = repositories.map((repo) => `
         <article class="repo">
@@ -546,7 +585,9 @@ INDEX_HTML = """<!doctype html>
 
     function renderTasks(repositories) {
       const rows = repositories.flatMap((repo) => (repo.tasks || []).map((task) => ({ repo, task })));
-      tasksEl.innerHTML = rows.length ? rows.map(({ repo, task }) => `
+      const visibleRows = activeStatus === "all" ? rows : rows.filter(({ task }) => task.status === activeStatus);
+      visibleCountEl.textContent = `${visibleRows.length} of ${rows.length} tasks shown`;
+      tasksEl.innerHTML = visibleRows.length ? visibleRows.map(({ repo, task }) => `
         <tr>
           <td><a href="${escapeHtml(repo.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)}</a></td>
           <td>${escapeHtml(repo.branch)}</td>
@@ -555,7 +596,15 @@ INDEX_HTML = """<!doctype html>
           <td>${task.url ? `<a href="${escapeHtml(task.url)}" target="_blank" rel="noreferrer">${escapeHtml(task.title)}</a>` : escapeHtml(task.title)}</td>
           <td class="status-${escapeHtml(task.status)}">${escapeHtml(task.status_label || labels[task.status] || task.status)}</td>
         </tr>
-      `).join("") : `<tr><td colspan="6">No tasks found.</td></tr>`;
+      `).join("") : `<tr><td colspan="6">No tasks match this filter.</td></tr>`;
+    }
+
+    function renderDashboard(data) {
+      renderSummary(data.summary);
+      renderRepos(data.repositories);
+      renderFilters();
+      renderTasks(data.repositories);
+      metaEl.textContent = `Generated ${new Date(data.generated_at).toLocaleString()} · default branch ${data.default_branch}`;
     }
 
     async function refresh() {
@@ -567,10 +616,8 @@ INDEX_HTML = """<!doctype html>
         if (!response.ok) {
           throw new Error(data.error || `Request failed with ${response.status}`);
         }
-        renderSummary(data.summary);
-        renderRepos(data.repositories);
-        renderTasks(data.repositories);
-        metaEl.textContent = `Generated ${new Date(data.generated_at).toLocaleString()} · default branch ${data.default_branch}`;
+        dashboardData = data;
+        renderDashboard(data);
       } catch (error) {
         summaryEl.innerHTML = "";
         reposEl.innerHTML = `<article class="repo"><div class="error">${escapeHtml(error.message)}</div></article>`;
@@ -581,6 +628,13 @@ INDEX_HTML = """<!doctype html>
         refreshButton.textContent = "Refresh";
       }
     }
+
+    filtersEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-status]");
+      if (!button || !dashboardData) return;
+      activeStatus = button.dataset.status;
+      renderDashboard(dashboardData);
+    });
 
     refreshButton.addEventListener("click", refresh);
     refresh();

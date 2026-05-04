@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Task Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #65758b;
+      --line: #d9e0e8;
+      --accent: #136f63;
+      --warn: #b7791f;
+      --done: #2f855a;
+      --danger: #c53030;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header, main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0; font-size: 24px; font-weight: 700; }
+    .meta { color: var(--muted); font-size: 14px; margin-top: 4px; }
+    button {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      border-radius: 6px;
+      padding: 9px 13px;
+      font: inherit;
+      cursor: pointer;
+      min-width: 92px;
+    }
+    button:disabled { opacity: .7; cursor: wait; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .metric span { display: block; color: var(--muted); font-size: 13px; }
+    .metric strong { display: block; font-size: 28px; line-height: 1.2; margin-top: 4px; }
+    .error { color: var(--danger); margin-top: 10px; font-size: 13px; }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: end;
+      margin: 0 0 12px;
+    }
+    .filter-group { min-width: 0; }
+    .filter-title {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .filter {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 7px 10px;
+      min-width: auto;
+    }
+    .filter[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: #e7f3f0;
+      color: var(--accent);
+    }
+    .clear-filter {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; min-width: 800px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0; background: #fbfcfd; }
+    tr:last-child td { border-bottom: 0; }
+    td a { color: var(--accent); text-decoration: none; }
+    .status-complete { color: var(--done); font-weight: 650; }
+    .status-in_progress { color: var(--warn); font-weight: 650; }
+    .status-not_started { color: var(--muted); font-weight: 650; }
+    .status-unknown { color: var(--danger); font-weight: 650; }
+    @media (max-width: 640px) {
+      header { align-items: flex-start; flex-direction: column; }
+      header, main { padding: 18px; }
+      .toolbar { grid-template-columns: 1fr; align-items: stretch; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Markdown Task Dashboard</h1>
+      <div class="meta" id="meta">Loading...</div>
+    </div>
+    <button id="refresh" type="button">Refresh</button>
+  </header>
+  <main>
+    <section class="summary" id="summary"></section>
+    <section class="toolbar" aria-label="Task filters">
+      <div class="filter-group">
+        <span class="filter-title">Status</span>
+        <div class="filters" id="status-filters"></div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-title">Repositories</span>
+        <div class="filters" id="repo-filters"></div>
+      </div>
+      <button class="clear-filter" id="clear-filters" type="button">Clear all</button>
+      <div class="meta" id="visible-count"></div>
+    </section>
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Repo</th>
+            <th>Branch</th>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Title</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tasks"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const summaryEl = document.querySelector("#summary");
+    const tasksEl = document.querySelector("#tasks");
+    const metaEl = document.querySelector("#meta");
+    const refreshButton = document.querySelector("#refresh");
+    const statusFiltersEl = document.querySelector("#status-filters");
+    const repoFiltersEl = document.querySelector("#repo-filters");
+    const clearFiltersButton = document.querySelector("#clear-filters");
+    const visibleCountEl = document.querySelector("#visible-count");
+    let dashboardData = null;
+    const defaultStatuses = ["not_started", "in_progress"];
+    let activeStatuses = new Set(defaultStatuses);
+    let activeRepos = new Set();
+
+    const labels = {
+      repositories: "Repositories",
+      tasks: "Tasks",
+      not_started: "Not started",
+      in_progress: "In progress",
+      complete: "Complete",
+      unknown: "Unknown"
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function renderSummary(summary) {
+      summaryEl.innerHTML = Object.keys(labels).map((key) => `
+        <div class="metric">
+          <span>${labels[key]}</span>
+          <strong>${summary[key] ?? 0}</strong>
+        </div>
+      `).join("");
+    }
+
+    function renderFilters(repositories) {
+      statusFiltersEl.innerHTML = ["not_started", "in_progress", "complete", "unknown"].map((key) => `
+        <button class="filter" type="button" data-status="${key}" aria-pressed="${activeStatuses.has(key)}">
+          ${labels[key]}
+        </button>
+      `).join("");
+      repoFiltersEl.innerHTML = repositories.map((repo) => `
+        <button class="filter" type="button" data-repo="${escapeHtml(repo.name)}" aria-pressed="${activeRepos.has(repo.name)}">
+          ${escapeHtml(repo.name)}
+        </button>
+      `).join("");
+    }
+
+    function renderTasks(repositories) {
+      const rows = repositories.flatMap((repo) => (repo.tasks || []).map((task) => ({ repo, task })));
+      const visibleRows = rows.filter(({ repo, task }) => {
+        const statusMatches = activeStatuses.size === 0 || activeStatuses.has(task.status);
+        const repoMatches = activeRepos.size === 0 || activeRepos.has(repo.name);
+        return statusMatches && repoMatches;
+      });
+      visibleCountEl.textContent = `${visibleRows.length} of ${rows.length} tasks shown`;
+      tasksEl.innerHTML = visibleRows.length ? visibleRows.map(({ repo, task }) => `
+        <tr>
+          <td><a href="${escapeHtml(repo.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)}</a></td>
+          <td>${escapeHtml(repo.branch)}</td>
+          <td>${escapeHtml(task.id)}</td>
+          <td>${escapeHtml(task.type)}</td>
+          <td>${task.url ? `<a href="${escapeHtml(task.url)}" target="_blank" rel="noreferrer">${escapeHtml(task.title)}</a>` : escapeHtml(task.title)}</td>
+          <td class="status-${escapeHtml(task.status)}">${escapeHtml(task.status_label || labels[task.status] || task.status)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="6">No tasks match this filter.</td></tr>`;
+    }
+
+    function renderDashboard(data) {
+      renderSummary(data.summary);
+      renderFilters(data.repositories);
+      renderTasks(data.repositories);
+      metaEl.textContent = `Generated ${new Date(data.generated_at).toLocaleString()} · default branch ${data.default_branch}`;
+    }
+
+    async function refresh() {
+      refreshButton.disabled = true;
+      refreshButton.textContent = "Loading";
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || `Request failed with ${response.status}`);
+        }
+        dashboardData = data;
+        renderDashboard(data);
+      } catch (error) {
+        summaryEl.innerHTML = "";
+        tasksEl.innerHTML = `<tr><td colspan="6">Unable to load dashboard.</td></tr>`;
+        metaEl.textContent = "Load failed";
+      } finally {
+        refreshButton.disabled = false;
+        refreshButton.textContent = "Refresh";
+      }
+    }
+
+    statusFiltersEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-status]");
+      if (!button || !dashboardData) return;
+      const status = button.dataset.status;
+      if (activeStatuses.has(status)) {
+        activeStatuses.delete(status);
+      } else {
+        activeStatuses.add(status);
+      }
+      renderDashboard(dashboardData);
+    });
+
+    repoFiltersEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-repo]");
+      if (!button || !dashboardData) return;
+      const repo = button.dataset.repo;
+      if (activeRepos.has(repo)) {
+        activeRepos.delete(repo);
+      } else {
+        activeRepos.add(repo);
+      }
+      renderDashboard(dashboardData);
+    });
+
+    clearFiltersButton.addEventListener("click", () => {
+      if (!dashboardData) return;
+      activeStatuses.clear();
+      activeRepos.clear();
+      renderDashboard(dashboardData);
+    });
+
+    refreshButton.addEventListener("click", refresh);
+    refresh();
+  </script>
+</body>
+</html>

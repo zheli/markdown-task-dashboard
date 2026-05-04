@@ -245,8 +245,9 @@
         dashboardData = data;
         renderDashboard(data);
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
         summaryEl.innerHTML = "";
-        tasksEl.innerHTML = `<tr><td colspan="6">Unable to load dashboard.</td></tr>`;
+        tasksEl.innerHTML = `<tr><td colspan="6">Unable to load dashboard: ${escapeHtml(message)}</td></tr>`;
         metaEl.textContent = "Load failed";
       } finally {
         refreshButton.disabled = false;

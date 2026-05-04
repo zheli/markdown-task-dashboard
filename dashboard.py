@@ -20,6 +20,7 @@ import yaml
 
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_BACKEND_PORT = 8000
+DEFAULT_FRONTEND_HOST = "127.0.0.1"
 PROJECT_PATHS = ("docs/PROJECT.md", "docs/projects.md")
 STATUSES = ("not_started", "in_progress", "complete", "unknown")
 REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -288,6 +289,31 @@ def truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def load_dotenv(path: str | Path = ".env") -> None:
+    env_path = Path(path)
+    if not env_path.exists():
+        return
+
+    with env_path.open("r", encoding="utf-8") as file:
+        for raw_line in file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
+
+
+def dashboard_url() -> str:
+    port = os.environ.get("FRONTEND_PORT") or os.environ.get("BACKEND_PORT") or str(DEFAULT_BACKEND_PORT)
+    return f"http://{DEFAULT_FRONTEND_HOST}:{port}"
+
+
 def build_status(config: AppConfig, token: str | None, use_mock_data: bool = False) -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).isoformat()
     summary = {"repositories": len(config.repositories), "tasks": 0, **empty_counts()}
@@ -369,7 +395,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def handle_status(self) -> None:
         try:
-            config = load_config(self.config_path)
+            config_path = os.environ.get("CONFIG_PATH", self.config_path)
+            config = load_config(config_path)
             payload = build_status(config, os.environ.get("GITHUB_TOKEN"), truthy_env("MOCK_DATA"))
             status = HTTPStatus.OK
         except ConfigError as error:
@@ -385,6 +412,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    load_dotenv()
     port_value = os.environ.get("BACKEND_PORT", str(DEFAULT_BACKEND_PORT))
     try:
         port = int(port_value)
@@ -392,7 +420,7 @@ def main() -> None:
         raise SystemExit(f"BACKEND_PORT must be an integer, got {port_value!r}")
 
     server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
-    print(f"Serving dashboard on http://127.0.0.1:{port}")
+    print(f"Serving dashboard on {dashboard_url()}")
     server.serve_forever()
 
 

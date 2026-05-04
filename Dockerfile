@@ -10,6 +10,7 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-dev || uv sync --no-dev
 
 COPY dashboard.py config.yaml ./
+COPY templates ./templates
 
 EXPOSE 8000
 

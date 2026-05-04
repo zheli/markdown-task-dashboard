@@ -1,0 +1,7 @@
+github:
+  default_branch: main
+
+repositories:
+  - name: owner/repo
+  - name: owner/another-repo
+    branch: develop

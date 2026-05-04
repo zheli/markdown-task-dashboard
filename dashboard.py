@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import dataclasses
-import html
 import json
 import os
 import re
@@ -21,9 +20,34 @@ import yaml
 
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_BACKEND_PORT = 8000
-PROJECT_PATH = "docs/PROJECT.md"
+PROJECT_PATHS = ("docs/PROJECT.md", "docs/projects.md")
 STATUSES = ("not_started", "in_progress", "complete", "unknown")
 REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+MOCK_MARKDOWN = """# Canton Infra - Project Tracking
+
+## Tasks & Epics
+
+| ID | Type | Title | Status | File |
+|----|------|-------|--------|------|
+| 001 | Epic | DevNet Validator Deployment | ✅ **Complete** | [001-EPIC-devnet-validator-deployment.md](tasks/001-EPIC-devnet-validator-deployment.md) |
+| 002 | Task | GitHub Action Redeployment | ⏳ Not started | [002-TASK-github-action-redeployment.md](tasks/002-TASK-github-action-redeployment.md) |
+| 003 | Epic | TestNet Deployment | 🚧 **In progress** | [003-EPIC-testnet-deployment.md](tasks/003-EPIC-testnet-deployment.md) |
+| 004 | Epic | MainNet Deployment | 🚧 **In progress** | [004-EPIC-mainnet-deployment.md](tasks/004-EPIC-mainnet-deployment.md) |
+| 005 | Task | Monitoring & Alerting | ⏳ Not started | [005-TASK-monitoring-alerting.md](tasks/005-TASK-monitoring-alerting.md) |
+| 006 | Task | Node Identity Backup | ✅ **Complete** | [006-TASK-node-identity-backup.md](tasks/006-TASK-node-identity-backup.md) |
+| 007 | Task | Secure Validator Auth | 🚧 **In progress** | [007-TASK-secure-validator-auth.md](tasks/007-TASK-secure-validator-auth.md) |
+| 008 | Task | TLS & Public Access | 🚧 **In progress** | [008-TASK-tls-public-access.md](tasks/008-TASK-tls-public-access.md) |
+| 009 | Task | AMM DEX Auth Setup | 🚧 **In progress** | [009-TASK-amm-dex-auth-setup.md](tasks/009-TASK-amm-dex-auth-setup.md) |
+| 010 | Task | Fix CORS Headers for dApp Access | ✅ **Complete** | [010-TASK-fix-cors-headers.md](tasks/010-TASK-fix-cors-headers.md) |
+| 011 | Epic | Canton dApp Manager | ⏳ Not started | [011-EPIC-dapp-manager.md](tasks/011-EPIC-dapp-manager.md) |
+| 012 | Task | Nginx Upload Body Size Limit | ✅ **Complete** | [012-TASK-nginx-upload-body-size.md](tasks/012-TASK-nginx-upload-body-size.md) |
+| 013 | Task | Expose gRPC Ledger API Publicly | ✅ **Complete** | [013-TASK-expose-grpc-endpoint.md](tasks/013-TASK-expose-grpc-endpoint.md) |
+| 014 | Task | Bump Validator Image Tags (2026-03-09) | ✅ **Complete** | [014-TASK-bump-image-tags.md](tasks/014-TASK-bump-image-tags.md) |
+| 015 | Task | Enable Daml-LF 2.dev on DevNet | ✅ **Complete** | [015-TASK-enable-2-dev-daml-lf.md](tasks/015-TASK-enable-2-dev-daml-lf.md) |
+| 016 | Task | DevNet Auth0 Migration | ✅ **Complete** | [016-TASK-devnet-auth0-migration.md](tasks/016-TASK-devnet-auth0-migration.md) |
+| 017 | Task | DevNet DA Utilities Setup | 🚧 **In progress** | [017-TASK-devnet-utilities-setup.md](tasks/017-TASK-devnet-utilities-setup.md) |
+| 018 | Task | MainNet DEX Party Onboarding | ✅ **Complete** | [018-TASK-mainnet-dex-party-onboarding.md](tasks/018-TASK-mainnet-dex-party-onboarding.md) |
+"""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,8 +120,8 @@ def load_config(path: str | Path) -> AppConfig:
     return AppConfig(default_branch=default_branch, repositories=parsed_repositories)
 
 
-def github_project_url(repo_name: str, branch: str) -> str:
-    quoted_path = urllib.parse.quote(PROJECT_PATH)
+def github_project_url(repo_name: str, branch: str, path: str = PROJECT_PATHS[0]) -> str:
+    quoted_path = urllib.parse.quote(path)
     quoted_ref = urllib.parse.quote(branch, safe="")
     return f"https://api.github.com/repos/{repo_name}/contents/{quoted_path}?ref={quoted_ref}"
 
@@ -108,9 +132,9 @@ def github_blob_url(repo_name: str, branch: str, path: str) -> str:
     return f"https://github.com/{repo_name}/blob/{quoted_branch}/{quoted_path}"
 
 
-def fetch_project_markdown(repo_name: str, branch: str, token: str) -> str:
+def fetch_github_markdown_file(repo_name: str, branch: str, path: str, token: str) -> str:
     request = urllib.request.Request(
-        github_project_url(repo_name, branch),
+        github_project_url(repo_name, branch, path),
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -124,7 +148,7 @@ def fetch_project_markdown(repo_name: str, branch: str, token: str) -> str:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         if error.code == HTTPStatus.NOT_FOUND:
-            raise GitHubError(f"{PROJECT_PATH} not found on branch {branch!r}") from error
+            raise GitHubError(f"{path} not found on branch {branch!r}") from error
         raise GitHubError(f"GitHub API returned HTTP {error.code}") from error
     except urllib.error.URLError as error:
         raise GitHubError(f"GitHub API request failed: {error.reason}") from error
@@ -132,18 +156,29 @@ def fetch_project_markdown(repo_name: str, branch: str, token: str) -> str:
         raise GitHubError("GitHub API returned invalid JSON") from error
 
     if not isinstance(payload, dict) or payload.get("type") != "file":
-        raise GitHubError(f"GitHub API did not return a file for {PROJECT_PATH}")
+        raise GitHubError(f"GitHub API did not return a file for {path}")
 
     encoded_content = payload.get("content")
     if not isinstance(encoded_content, str):
-        raise GitHubError(f"GitHub API response for {PROJECT_PATH} has no content")
+        raise GitHubError(f"GitHub API response for {path} has no content")
 
     try:
         return base64.b64decode(encoded_content).decode("utf-8")
     except ValueError as error:
-        raise GitHubError(f"GitHub API response for {PROJECT_PATH} is not valid base64") from error
+        raise GitHubError(f"GitHub API response for {path} is not valid base64") from error
     except UnicodeDecodeError as error:
-        raise GitHubError(f"{PROJECT_PATH} is not UTF-8") from error
+        raise GitHubError(f"{path} is not UTF-8") from error
+
+
+def fetch_project_markdown(repo_name: str, branch: str, token: str) -> tuple[str, str]:
+    errors: list[str] = []
+    for path in PROJECT_PATHS:
+        try:
+            return fetch_github_markdown_file(repo_name, branch, path, token), path
+        except GitHubError as error:
+            errors.append(str(error))
+
+    raise GitHubError("; ".join(errors))
 
 
 def normalize_status(raw_status: str) -> str:
@@ -249,31 +284,43 @@ def count_tasks(tasks: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def build_status(config: AppConfig, token: str | None) -> dict[str, Any]:
+def truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def build_status(config: AppConfig, token: str | None, use_mock_data: bool = False) -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).isoformat()
     summary = {"repositories": len(config.repositories), "tasks": 0, **empty_counts()}
     repositories: list[dict[str, Any]] = []
 
     for repo in config.repositories:
+        source_path = PROJECT_PATHS[1] if use_mock_data else PROJECT_PATHS[0]
         repo_result: dict[str, Any] = {
             "name": repo.name,
             "branch": repo.branch,
-            "source": PROJECT_PATH,
-            "source_url": github_blob_url(repo.name, repo.branch, PROJECT_PATH),
+            "source": source_path,
+            "source_url": github_blob_url(repo.name, repo.branch, source_path),
             "status": "ok",
             "error": None,
             "counts": empty_counts(),
             "tasks": [],
         }
 
-        if not token:
+        if use_mock_data:
+            markdown = MOCK_MARKDOWN
+        elif not token:
             repo_result["status"] = "error"
             repo_result["error"] = "GITHUB_TOKEN is required."
             repositories.append(repo_result)
             continue
+        else:
+            markdown = None
 
         try:
-            markdown = fetch_project_markdown(repo.name, repo.branch, token)
+            if markdown is None:
+                markdown, source_path = fetch_project_markdown(repo.name, repo.branch, token)
+                repo_result["source"] = source_path
+                repo_result["source_url"] = github_blob_url(repo.name, repo.branch, source_path)
             tasks = parse_project_markdown(markdown, repo.name, repo.branch)
             counts = count_tasks(tasks)
             repo_result["tasks"] = tasks
@@ -322,7 +369,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def handle_status(self) -> None:
         try:
             config = load_config(self.config_path)
-            payload = build_status(config, os.environ.get("GITHUB_TOKEN"))
+            payload = build_status(config, os.environ.get("GITHUB_TOKEN"), truthy_env("MOCK_DATA"))
             status = HTTPStatus.OK
         except ConfigError as error:
             payload = {"error": str(error)}

@@ -161,6 +161,41 @@ def test_build_status_keeps_repo_level_errors():
     assert payload["repositories"][0]["error"] == "GITHUB_TOKEN is required."
 
 
+def test_load_dotenv_preserves_existing_environment(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        """
+GITHUB_TOKEN=from-file
+BACKEND_PORT=9000
+QUOTED_VALUE="quoted"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+    monkeypatch.delenv("BACKEND_PORT", raising=False)
+    monkeypatch.delenv("QUOTED_VALUE", raising=False)
+
+    dashboard.load_dotenv(env_path)
+
+    assert dashboard.os.environ["GITHUB_TOKEN"] == "from-env"
+    assert dashboard.os.environ["BACKEND_PORT"] == "9000"
+    assert dashboard.os.environ["QUOTED_VALUE"] == "quoted"
+
+
+def test_dashboard_url_prefers_frontend_port(monkeypatch):
+    monkeypatch.setenv("BACKEND_PORT", "8000")
+    monkeypatch.setenv("FRONTEND_PORT", "8080")
+
+    assert dashboard.dashboard_url() == "http://127.0.0.1:8080"
+
+
+def test_dashboard_url_falls_back_to_backend_port(monkeypatch):
+    monkeypatch.setenv("BACKEND_PORT", "9000")
+    monkeypatch.delenv("FRONTEND_PORT", raising=False)
+
+    assert dashboard.dashboard_url() == "http://127.0.0.1:9000"
+
+
 def test_mock_data_builds_demo_dashboard_without_token():
     config = dashboard.AppConfig(
         default_branch="main",

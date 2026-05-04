@@ -436,7 +436,7 @@ INDEX_HTML = """<!doctype html>
       gap: 12px;
       margin: 24px 0;
     }
-    .metric, .repo {
+    .metric {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -444,21 +444,23 @@ INDEX_HTML = """<!doctype html>
     }
     .metric span { display: block; color: var(--muted); font-size: 13px; }
     .metric strong { display: block; font-size: 28px; line-height: 1.2; margin-top: 4px; }
-    .repos { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 24px; }
-    .repo h2 { font-size: 16px; margin: 0 0 4px; }
-    .repo a { color: var(--accent); text-decoration: none; }
-    .counts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; font-size: 12px; background: #fbfcfd; }
     .error { color: var(--danger); margin-top: 10px; font-size: 13px; }
     .toolbar {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: end;
       margin: 0 0 12px;
-      flex-wrap: wrap;
     }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter-group { min-width: 0; }
+    .filter-title {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .filter {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -471,6 +473,12 @@ INDEX_HTML = """<!doctype html>
       border-color: var(--accent);
       background: #e7f3f0;
       color: var(--accent);
+    }
+    .clear-filter {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--text);
+      white-space: nowrap;
     }
     .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 800px; }
@@ -485,6 +493,7 @@ INDEX_HTML = """<!doctype html>
     @media (max-width: 640px) {
       header { align-items: flex-start; flex-direction: column; }
       header, main { padding: 18px; }
+      .toolbar { grid-template-columns: 1fr; align-items: stretch; }
       button { width: 100%; }
     }
   </style>
@@ -499,9 +508,16 @@ INDEX_HTML = """<!doctype html>
   </header>
   <main>
     <section class="summary" id="summary"></section>
-    <section class="repos" id="repos"></section>
     <section class="toolbar" aria-label="Task filters">
-      <div class="filters" id="filters"></div>
+      <div class="filter-group">
+        <span class="filter-title">Status</span>
+        <div class="filters" id="status-filters"></div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-title">Repositories</span>
+        <div class="filters" id="repo-filters"></div>
+      </div>
+      <button class="clear-filter" id="clear-filters" type="button">Clear all</button>
       <div class="meta" id="visible-count"></div>
     </section>
     <section class="table-wrap">
@@ -522,14 +538,17 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const summaryEl = document.querySelector("#summary");
-    const reposEl = document.querySelector("#repos");
     const tasksEl = document.querySelector("#tasks");
     const metaEl = document.querySelector("#meta");
     const refreshButton = document.querySelector("#refresh");
-    const filtersEl = document.querySelector("#filters");
+    const statusFiltersEl = document.querySelector("#status-filters");
+    const repoFiltersEl = document.querySelector("#repo-filters");
+    const clearFiltersButton = document.querySelector("#clear-filters");
     const visibleCountEl = document.querySelector("#visible-count");
     let dashboardData = null;
-    let activeStatus = "all";
+    const defaultStatuses = ["not_started", "in_progress"];
+    let activeStatuses = new Set(defaultStatuses);
+    let activeRepos = new Set();
 
     const labels = {
       repositories: "Repositories",
@@ -559,33 +578,26 @@ INDEX_HTML = """<!doctype html>
       `).join("");
     }
 
-    function renderFilters() {
-      const filterLabels = { all: "All", ...labels };
-      filtersEl.innerHTML = ["all", "not_started", "in_progress", "complete", "unknown"].map((key) => `
-        <button class="filter" type="button" data-status="${key}" aria-pressed="${activeStatus === key}">
-          ${filterLabels[key]}
+    function renderFilters(repositories) {
+      statusFiltersEl.innerHTML = ["not_started", "in_progress", "complete", "unknown"].map((key) => `
+        <button class="filter" type="button" data-status="${key}" aria-pressed="${activeStatuses.has(key)}">
+          ${labels[key]}
         </button>
       `).join("");
-    }
-
-    function renderRepos(repositories) {
-      reposEl.innerHTML = repositories.map((repo) => `
-        <article class="repo">
-          <h2><a href="${escapeHtml(repo.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(repo.name)}</a></h2>
-          <div class="meta">${escapeHtml(repo.branch)} · ${escapeHtml(repo.source)}</div>
-          <div class="counts">
-            ${Object.keys(labels).filter((key) => !["repositories", "tasks"].includes(key)).map((key) => `
-              <span class="pill">${labels[key]}: ${repo.counts?.[key] ?? 0}</span>
-            `).join("")}
-          </div>
-          ${repo.error ? `<div class="error">${escapeHtml(repo.error)}</div>` : ""}
-        </article>
+      repoFiltersEl.innerHTML = repositories.map((repo) => `
+        <button class="filter" type="button" data-repo="${escapeHtml(repo.name)}" aria-pressed="${activeRepos.has(repo.name)}">
+          ${escapeHtml(repo.name)}
+        </button>
       `).join("");
     }
 
     function renderTasks(repositories) {
       const rows = repositories.flatMap((repo) => (repo.tasks || []).map((task) => ({ repo, task })));
-      const visibleRows = activeStatus === "all" ? rows : rows.filter(({ task }) => task.status === activeStatus);
+      const visibleRows = rows.filter(({ repo, task }) => {
+        const statusMatches = activeStatuses.size === 0 || activeStatuses.has(task.status);
+        const repoMatches = activeRepos.size === 0 || activeRepos.has(repo.name);
+        return statusMatches && repoMatches;
+      });
       visibleCountEl.textContent = `${visibleRows.length} of ${rows.length} tasks shown`;
       tasksEl.innerHTML = visibleRows.length ? visibleRows.map(({ repo, task }) => `
         <tr>
@@ -601,8 +613,7 @@ INDEX_HTML = """<!doctype html>
 
     function renderDashboard(data) {
       renderSummary(data.summary);
-      renderRepos(data.repositories);
-      renderFilters();
+      renderFilters(data.repositories);
       renderTasks(data.repositories);
       metaEl.textContent = `Generated ${new Date(data.generated_at).toLocaleString()} · default branch ${data.default_branch}`;
     }
@@ -620,7 +631,6 @@ INDEX_HTML = """<!doctype html>
         renderDashboard(data);
       } catch (error) {
         summaryEl.innerHTML = "";
-        reposEl.innerHTML = `<article class="repo"><div class="error">${escapeHtml(error.message)}</div></article>`;
         tasksEl.innerHTML = `<tr><td colspan="6">Unable to load dashboard.</td></tr>`;
         metaEl.textContent = "Load failed";
       } finally {
@@ -629,10 +639,34 @@ INDEX_HTML = """<!doctype html>
       }
     }
 
-    filtersEl.addEventListener("click", (event) => {
+    statusFiltersEl.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-status]");
       if (!button || !dashboardData) return;
-      activeStatus = button.dataset.status;
+      const status = button.dataset.status;
+      if (activeStatuses.has(status)) {
+        activeStatuses.delete(status);
+      } else {
+        activeStatuses.add(status);
+      }
+      renderDashboard(dashboardData);
+    });
+
+    repoFiltersEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-repo]");
+      if (!button || !dashboardData) return;
+      const repo = button.dataset.repo;
+      if (activeRepos.has(repo)) {
+        activeRepos.delete(repo);
+      } else {
+        activeRepos.add(repo);
+      }
+      renderDashboard(dashboardData);
+    });
+
+    clearFiltersButton.addEventListener("click", () => {
+      if (!dashboardData) return;
+      activeStatuses.clear();
+      activeRepos.clear();
       renderDashboard(dashboardData);
     });
 

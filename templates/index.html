@@ -16,6 +16,22 @@
       --warn: #b7791f;
       --done: #2f855a;
       --danger: #c53030;
+      --filter-active-bg: #e7f3f0;
+      --th-bg: #fbfcfd;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #1a1d23;
+      --panel: #23272e;
+      --text: #e1e4e8;
+      --muted: #8b949e;
+      --line: #30363d;
+      --accent: #3fb9a2;
+      --warn: #d4a72c;
+      --done: #3dc06c;
+      --danger: #f56565;
+      --filter-active-bg: #1a3a34;
+      --th-bg: #2a2e35;
     }
     * { box-sizing: border-box; }
     body {
@@ -86,7 +102,7 @@
     }
     .filter[aria-pressed="true"] {
       border-color: var(--accent);
-      background: #e7f3f0;
+      background: var(--filter-active-bg);
       color: var(--accent);
     }
     .clear-filter {
@@ -95,10 +111,29 @@
       color: var(--text);
       white-space: nowrap;
     }
+    .theme-control {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 8px; padding: 0 13px; height: 38px; cursor: pointer;
+    }
+    .theme-control-label { font-size: 13px; color: var(--muted); user-select: none; white-space: nowrap; }
+    .theme-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+    .theme-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .theme-slider {
+      position: absolute; inset: 0; border-radius: 999px;
+      background: var(--line); cursor: pointer; transition: background .2s;
+    }
+    .theme-slider::before {
+      content: ""; position: absolute; top: 3px; left: 3px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; transition: transform .2s;
+    }
+    .theme-switch input:checked + .theme-slider { background: var(--accent); }
+    .theme-switch input:checked + .theme-slider::before { transform: translateX(16px); }
     .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 800px; }
     th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
-    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0; background: #fbfcfd; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0; background: var(--th-bg); }
     tr:last-child td { border-bottom: 0; }
     td a { color: var(--accent); text-decoration: none; }
     .status-complete { color: var(--done); font-weight: 650; }
@@ -119,7 +154,16 @@
       <h1>Markdown Task Dashboard</h1>
       <div class="meta" id="meta">Loading...</div>
     </div>
-    <button id="refresh" type="button">Refresh</button>
+    <div style="display:flex;gap:8px">
+      <label class="theme-control">
+        <span class="theme-control-label">Dark mode</span>
+        <span class="theme-switch">
+          <input id="theme-toggle" type="checkbox" />
+          <span class="theme-slider"></span>
+        </span>
+      </label>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
   </header>
   <main>
     <section class="summary" id="summary"></section>
@@ -284,6 +328,33 @@
       activeStatuses.clear();
       activeRepos.clear();
       renderDashboard(dashboardData);
+    });
+
+    // Dark mode
+    const themeToggle = document.querySelector("#theme-toggle");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function applyTheme(dark) {
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      themeToggle.checked = dark;
+    }
+
+    function getEffectiveTheme() {
+      const saved = localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") return saved === "dark";
+      return prefersDark.matches;
+    }
+
+    applyTheme(getEffectiveTheme());
+
+    themeToggle.addEventListener("change", () => {
+      const next = themeToggle.checked;
+      localStorage.setItem("theme", next ? "dark" : "light");
+      applyTheme(next);
+    });
+
+    prefersDark.addEventListener("change", () => {
+      if (!localStorage.getItem("theme")) applyTheme(prefersDark.matches);
     });
 
     refreshButton.addEventListener("click", refresh);

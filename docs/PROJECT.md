@@ -16,6 +16,7 @@ linked in the table below.
 
 Task 001 complete. Two new tasks planned: deploy the dashboard to production
 (`tasks.z12z.org`) and replace the GitHub PAT with a GitHub App for repo access.
+Task 004 (dark mode toggle) is complete.
 
 ## Tasks & Epics
 
@@ -24,6 +25,7 @@ Task 001 complete. Two new tasks planned: deploy the dashboard to production
 | 001 | Task | Extract HTML template from dashboard.py | **✅ Complete** | [001-TASK-extract-html-template.md](tasks/001-TASK-extract-html-template.md) |
 | 002 | Task | Deploy dashboard to tasks.z12z.org | ⏳ Not started | [002-TASK-deploy-to-ubuntu-server.md](tasks/002-TASK-deploy-to-ubuntu-server.md) |
 | 003 | Task | Use GitHub App for repo access | ⏳ Not started | [003-TASK-use-github-app-for-repo-access.md](tasks/003-TASK-use-github-app-for-repo-access.md) |
+| 004 | Task | Add dark mode toggle to dashboard | **✅ Complete** | [004-TASK-dark-mode-toggle.md](tasks/004-TASK-dark-mode-toggle.md) |
 
 ## How to Add a New Task or Epic
 

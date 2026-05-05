@@ -14,14 +14,16 @@ linked in the table below.
 
 ## Current Status
 
-Initial task tracking setup. One task in progress to extract inline HTML/CSS
-from `dashboard.py` into a separate template file.
+Task 001 complete. Two new tasks planned: deploy the dashboard to production
+(`tasks.z12z.org`) and replace the GitHub PAT with a GitHub App for repo access.
 
 ## Tasks & Epics
 
 | ID | Type | Title | Status | File |
 |----|------|-------|--------|------|
 | 001 | Task | Extract HTML template from dashboard.py | **✅ Complete** | [001-TASK-extract-html-template.md](tasks/001-TASK-extract-html-template.md) |
+| 002 | Task | Deploy dashboard to tasks.z12z.org | ⏳ Not started | [002-TASK-deploy-to-ubuntu-server.md](tasks/002-TASK-deploy-to-ubuntu-server.md) |
+| 003 | Task | Use GitHub App for repo access | ⏳ Not started | [003-TASK-use-github-app-for-repo-access.md](tasks/003-TASK-use-github-app-for-repo-access.md) |
 
 ## How to Add a New Task or Epic
 
